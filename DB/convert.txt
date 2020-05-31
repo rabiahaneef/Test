@@ -1,0 +1,71 @@
+import json
+import snowflake.connector
+import requests
+import base64
+passw='TE9ja0Rvd25AMjAyMA=='
+dec_pass=base64.b64decode(passw).decode("utf-8")
+print(dec_pass)
+conn = snowflake.connector.connect(
+    user="cdp",
+    password='LockDown@2020',
+    account="PN49714.east-us-2.azure",
+    warehouse='COMPUTE_WH',
+    database='ETL_STAGING',
+    schema='HXP_MATILLION_STG'
+)
+
+CONVERT_API = "http://52.247.116.251:61575/api/convert/"
+CASS_API = "http://52.247.116.251:61575/api/convert/"
+PIN_API = "http://52.247.116.251:49338/api/pin/"
+
+cursor = conn.cursor()
+cur = conn.cursor()
+try:
+    cursor.execute(
+        "SELECT CONFIG_VALUE FROM CDP_ADMIN.CTRL.ETL_CONFIG_VALUES WHERE CONFIG_KEY = 'batchIngestReadOffset';")
+    offset = 10
+    print("Offset: " + str(offset))
+except:
+    offset = 2000
+
+cursor.execute('SELECT COUNT(*) FROM ETL_STAGING.HXP_MATILLION_STG.MICROSERVICE_INPUT')
+leng = cursor.fetchone()[0]
+# row_1 = cursor.fetchall()[0]
+print("Number of records: " + str(leng))
+print("Offset: " + str(offset))
+
+cursor.execute('SELECT * FROM ETL_STAGING.HXP_MATILLION_STG.MICROSERVICE_INPUT')
+
+if (offset >= leng):
+    offset = leng
+lis = []
+count = 0
+result=[]
+for i in range(0, leng, offset):
+    print("\n")
+    count += 1
+    print("count: " + str(count))
+    records = cursor.fetchmany(offset)
+    print(records)
+    for eachrecord in records:
+        # print("The current record is: ",eachrecord)
+        record = json.loads(eachrecord[0])
+        print(record)
+        try:
+            convert = requests.post(url=CONVERT_API, json=record)
+            record = json.loads(convert.text.upper())
+            print("convert output: ", record)
+            # cass = requests.post(url=CASS_API, json=record)
+            # record=json.loads(cass.text.upper())
+            # print("cass output: ", record)
+            # pin = requests.post(url=PIN_API, json=record)
+            # print(pin.text)
+            print(json.dumps(record))
+            result.append(json.dumps(record))
+            print('r: ',result)
+            #cur.execute("insert into ETL_STAGING.HXP_MATILLION_STG.MICROSERVICE_OUTPUT  (select PARSE_JSON('%s'))" % json.dumps(record))
+
+        except Exception as e:
+            print(e)
+    print ("insert into ETL_STAGING.HXP_MATILLION_STG.MICROSERVICE_OUTPUT  (select PARSE_JSON('%s'))" % result)
+
